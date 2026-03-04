@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Noon Shopping Assistant",
+  "version": "1.2.1",
+  "description": "AI-powered shopping assistant for noon.com \u2014 find products, compare, and discover deals through conversation.",
+  "host_permissions": [
+    "https://www.noon.com/*",
+    "https://api.anthropic.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.noon.com/*"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "css": [
+        "src/content.css"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_title": "Noon Shopping Assistant"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
