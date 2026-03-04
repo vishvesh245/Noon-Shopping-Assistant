@@ -44,11 +44,10 @@ The **Noon Shopping Assistant** brings a Claude AI-powered chat panel directly o
 
 ```text
 noon-shopping-assistant/
-├── src/
-│   ├── content.js        # Core logic: UI injection, API handling, & parsing
-│   └── content.css       # Styles for the chat panel and custom components
+├── PRODUCT_DECISIONS.md  # Documentation of product trade-offs and "why"
+├── content.js            # Core logic: UI injection, API handling, & parsing
+├── content.css           # Styles for the chat panel and custom components
 ├── manifest.json         # Chrome extension configuration (v3)
 ├── README.md             # Project overview
 ├── SETUP.md              # Local installation & API configuration
-├── CHANGELOG.md          # Version history and bug fixes
-└── PRODUCT_DECISIONS.md  # Documentation of product trade-offs and "why"
+└── CHANGELOG.md          # Version history and bug fixes
