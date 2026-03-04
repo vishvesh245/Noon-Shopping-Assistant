@@ -4,17 +4,16 @@ An AI-powered Chrome Extension that lives on noon.com — find products, compare
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-Live-brightgreen?logo=googlechrome)](https://chromewebstore.google.com/detail/ahmddkhlmakehabmgelljlpehomepmhj)
 [![Version](https://img.shields.io/badge/version-1.2.1-blue)](CHANGELOG.md)
-[![Built by a PM](https://img.shields.io/badge/Built%20by%20a-Product%20Manager-orange)](#about)
 
 
 
-The Problem
+**The Problem**
 
 noon.com has millions of products. Finding the right one means drowning in search results, jumping between tabs to compare specs, reading hundreds of reviews, and still not being sure if you're getting a good deal.
 
 Most people either give up or buy something they're not confident about.
 
-The Solution
+**The Solution**
 
 Noon Shopping Assistant brings a Claude AI-powered chat panel directly onto noon.com. You just talk to it — and it finds, compares, and summarises products for you without you ever leaving the page.
 
