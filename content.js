@@ -1045,7 +1045,8 @@
   // CORE — all runs directly here, no service worker
   // ════════════════════════════════════════════════
 
-  const CLAUDE_API_KEY = "YOUR_API_KEY_HERE";
+  // API key is stored server-side on the proxy — never hardcode it here
+  const PROXY_URL = "https://YOUR_RAILWAY_URL.up.railway.app/api/chat"; // ← update after Railway deploy
   const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
   const SYSTEM_PROMPT = `You are a sharp, friendly noon.com shopping assistant. Real person energy — warm, direct, no corporate speak.
 Tone: contractions ("you'll", "it's", "don't"), real opinions, NEVER say "Great choice!" "Absolutely!" "Certainly!". React to what the user ACTUALLY said — if they want budget options, lead with value; if they want premium, lead with quality. Keep responses grounded in what the data actually shows.
@@ -1481,16 +1482,9 @@ RULES: image_url = https://f.nooncdn.com/p/ + image_key + .jpg. url = https://ww
   }
 
   async function callClaude(messages, maxTokens=2048, system=null) {
-    const apiKey = CLAUDE_API_KEY;
-    if (!apiKey || apiKey === 'YOUR_API_KEY_HERE') throw new Error('API key not set in content.js');
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(PROXY_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
         max_tokens: maxTokens,
@@ -1500,7 +1494,7 @@ RULES: image_url = https://f.nooncdn.com/p/ + image_key + .jpg. url = https://ww
     });
     if (!res.ok) {
       const err = await res.json().catch(()=>({}));
-      throw new Error(err.error?.message || `Claude API error ${res.status}`);
+      throw new Error(err.error?.message || `Proxy error ${res.status}`);
     }
     return (await res.json()).content?.[0]?.text || '';
   }
