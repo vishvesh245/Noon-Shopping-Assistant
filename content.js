@@ -662,7 +662,7 @@
       }], 300, 'Product analyst. One sentence max. No hedging. No asterisks.');
 
       let v=null;
-      try{v=JSON.parse(raw.trim().replace(/^```json\s*/,'').replace(/\s*```$/,''));}
+      try{v=JSON.parse(raw.trim().replace(/^```[a-z]*\s*/i,'').replace(/\s*```$/,''));}
       catch(e){const m=raw.match(/\{[\s\S]*\}/);if(m)try{v=JSON.parse(m[0]);}catch(e2){}}
 
       const area = el.querySelector(`#bv-${cmpId}`);
@@ -805,7 +805,7 @@
       }], 700, 'Spec-sharp product analyst. Brutally honest, cites data, no hedging.');
 
       let verdict = null;
-      try { const clean=raw.trim().replace(/^```json\s*/,'').replace(/\s*```$/,''); verdict=JSON.parse(clean); }
+      try { const clean=raw.trim().replace(/^```[a-z]*\s*/i,'').replace(/\s*```$/,''); verdict=JSON.parse(clean); }
       catch(e) { const m=raw.match(/\{[\s\S]*\}/); if(m) try{verdict=JSON.parse(m[0]);}catch(e2){} }
 
       if (verdict) {
@@ -966,7 +966,7 @@
         .then(raw => {
           let verdict='', pros=[], cons=[];
           try {
-            const clean = raw.trim().replace(/^```json\s*/,'').replace(/\s*```$/,'');
+            const clean = raw.trim().replace(/^```[a-z]*\s*/i,'').replace(/\s*```$/,'');
             const parsed = JSON.parse(clean);
             verdict = parsed.verdict || '';
             pros = parsed.pros || [];
@@ -1461,7 +1461,7 @@ RULES: image_url = https://f.nooncdn.com/p/ + image_key + .jpg. url = https://ww
     let showProducts = true;
     console.log('[NA] Claude raw:', raw?.slice(0,200));
     try {
-      const clean = raw.trim().replace(/^```json\s*/,'').replace(/\s*```$/,'');
+      const clean = raw.trim().replace(/^```[a-z]*\s*/i,'').replace(/\s*```$/,'');
       const parsed = JSON.parse(clean);
       reply = parsed.message || reply;
       heading = parsed.heading || '';

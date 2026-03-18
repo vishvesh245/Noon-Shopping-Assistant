@@ -28,7 +28,12 @@ export default {
     }
 
     try {
-      const { messages, system, model, max_tokens } = await request.json();
+      const body = await request.json().catch(() => null);
+      if (!body) {
+        return Response.json({ error: "Request body must be valid JSON" }, { status: 400, headers: CORS_HEADERS });
+      }
+
+      const { messages, system, model, max_tokens } = body;
 
       if (!messages || !Array.isArray(messages)) {
         return Response.json({ error: "messages array is required" }, { status: 400, headers: CORS_HEADERS });
