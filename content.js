@@ -1046,7 +1046,7 @@
   // ════════════════════════════════════════════════
 
   // API key is stored server-side on the proxy — never hardcode it here
-  const PROXY_URL = "https://YOUR_RAILWAY_URL.up.railway.app/api/chat"; // ← update after Railway deploy
+  const PROXY_URL = "https://noon-assistant-proxy.YOUR_CF_SUBDOMAIN.workers.dev/api/chat"; // ← update after Cloudflare deploy
   const CLAUDE_MODEL = "claude-haiku-4-5-20251001";
   const SYSTEM_PROMPT = `You are a sharp, friendly noon.com shopping assistant. Real person energy — warm, direct, no corporate speak.
 Tone: contractions ("you'll", "it's", "don't"), real opinions, NEVER say "Great choice!" "Absolutely!" "Certainly!". React to what the user ACTUALLY said — if they want budget options, lead with value; if they want premium, lead with quality. Keep responses grounded in what the data actually shows.

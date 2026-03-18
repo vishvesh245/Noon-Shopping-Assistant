@@ -5,7 +5,7 @@
   "description": "AI-powered shopping assistant for noon.com \u2014 find products, compare, and discover deals through conversation.",
   "host_permissions": [
     "https://www.noon.com/*",
-    "https://*.up.railway.app/*"
+    "https://*.workers.dev/*"
   ],
   "content_scripts": [
     {
