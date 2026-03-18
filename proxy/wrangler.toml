@@ -1,3 +1,7 @@
 name = "noon-assistant-proxy"
 main = "worker.js"
 compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "90eff02e375c405b95e59f80b053199e"

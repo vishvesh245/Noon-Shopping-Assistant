@@ -21,7 +21,30 @@ export default {
       return Response.json({ error: "Not found" }, { status: 404, headers: CORS_HEADERS });
     }
 
-    // Rate limiting via CF binding (optional, uses built-in if configured)
+    // IP-based rate limiting: 30 requests per minute per IP
+    const clientIP = request.headers.get("CF-Connecting-IP") || "unknown";
+    const rateLimitKey = `rate:${clientIP}`;
+    const RATE_LIMIT_MAX = 30;
+    const RATE_LIMIT_WINDOW = 60; // seconds
+
+    try {
+      const current = await env.RATE_LIMIT.get(rateLimitKey);
+      const count = current ? parseInt(current, 10) : 0;
+
+      if (count >= RATE_LIMIT_MAX) {
+        return Response.json(
+          { error: "Rate limit exceeded. Maximum 30 requests per minute. Please try again later." },
+          { status: 429, headers: CORS_HEADERS }
+        );
+      }
+
+      // Increment counter with 60-second TTL on every write to ensure keys always expire
+      await env.RATE_LIMIT.put(rateLimitKey, String(count + 1), { expirationTtl: RATE_LIMIT_WINDOW });
+    } catch (err) {
+      // If KV is unavailable, allow the request through rather than blocking users
+      console.error("Rate limit check failed:", err);
+    }
+
     const apiKey = env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return Response.json({ error: "API key not configured" }, { status: 500, headers: CORS_HEADERS });
