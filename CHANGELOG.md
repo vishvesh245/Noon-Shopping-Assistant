@@ -4,6 +4,19 @@ All notable changes to Noon Shopping Assistant are documented here.
 
 ---
 
+## [1.3.0] — 2026-08-07
+
+### Fixed
+- **Critical: all searches returned "no products"** — noon.com shipped a new frontend ("bigalog", data-version 4.x) that serializes page data as JS object literals with unquoted keys (`$R[2028]={offer_code:"...",price:117,...}`) instead of JSON. Every parsing regex silently matched nothing. Rewrote `parseNoonRSC` to extract fields per product with targeted regexes on the new format
+- **Product detail parsing** — `fetchProductDetails` now reads specs from the new `{code,name,value}` literals, reviews from the page's JSON-LD (`reviewBody`/`ratingValue`), and scopes the description to the Product JSON-LD block so it no longer grabs noon's site-wide blurb
+- **Live deal chips** — deal-tag regex in `fetchLiveDeals` now matches both the old quoted JSON and the new unquoted literal format
+- **Manifest paths** — `content_scripts` pointed at `src/content.js`/`src/content.css` but the files live at the repo root; a fresh clone wouldn't load in Chrome. Also removed the missing `icons/` reference and a redundant stylesheet injection in `content.js` that depended on the wrong path
+
+### Notes
+Noon kept all the field names (`catalog_sku`, `sale_price`, `plp_specifications`, `deal_tag`) — only the serialization framing changed. If products vanish again, check the framing first: fetch a search page and look at how `offer_code` is quoted.
+
+---
+
 ## [1.2.1] — 2026-03-02
 
 ### Fixed

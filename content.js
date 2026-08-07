@@ -10,12 +10,7 @@
   let settings={showImages:true};
   let lastSearchResults=[]; // track last shown products for ordinal compare
 
-  // ── INJECT UI ──
-  const styleLink=document.createElement('link');
-  styleLink.rel='stylesheet';
-  styleLink.href=chrome.runtime.getURL('src/content.css');
-  document.head.appendChild(styleLink);
-
+  // ── INJECT UI ── (content.css is injected by the manifest)
   const root=document.createElement('div');
   root.id='noon-assistant-root';
   root.innerHTML=`
@@ -1164,7 +1159,8 @@ RULES: image_url = https://f.nooncdn.com/p/ + image_key + .jpg. url = https://ww
 
       // Extract deal_tag text values from product objects
       const dealTexts = [];
-      const textRe = /"deal_tag"\s*:\s*\{[^}]{0,300}"text"\s*:\s*"([^"]+)"/g;
+      // Matches old quoted JSON ("deal_tag":{..."text":"X"}) and new unquoted literals (deal_tag:$R[n]={...text:"X"})
+      const textRe = /deal_tag"?\s*:\s*(?:\$R\[\d+\]=)?\{[^}]{0,300}"?text"?\s*:\s*"([^"]+)"/g;
       while ((m = textRe.exec(text)) !== null) {
         const raw = m[1].replace(/\\u([0-9a-fA-F]{4})/g, (_,h)=>String.fromCodePoint(parseInt(h,16)));
         const clean = raw.replace(/[\u{1F000}-\u{1FFFF}\u2600-\u27FF\uFE0F]/gu,'').trim();
@@ -1274,8 +1270,7 @@ RULES: image_url = https://f.nooncdn.com/p/ + image_key + .jpg. url = https://ww
 
       const details = { ...empty };
 
-      // ── 1. SPECS: noon PDP RSC has plp_specifications as [{label,value},...] ──
-      // Strategy A: find the biggest plp_specifications array
+      // ── 1. SPECS — new format: specifications:$R[n]=[{code:"..",name:"Color",value:"white"},...] ──
       const seenKeys = new Set();
       const addSpec = (l, v) => {
         const k = String(l).toLowerCase().trim();
@@ -1284,89 +1279,32 @@ RULES: image_url = https://f.nooncdn.com/p/ + image_key + .jpg. url = https://ww
           details.specs.push([String(l), String(v)]);
         }
       };
-
-      // Try to find plp_specifications JSON array directly
-      const plpMatches = [...text.matchAll(/"plp_specifications"\s*:\s*(\[[^\]]{0,20000}\])/gs)];
-      let bestPlp = null;
-      for (const m of plpMatches) {
-        try {
-          const arr = JSON.parse(m[1]);
-          if (Array.isArray(arr) && arr.length > (bestPlp?.length||0)) bestPlp = arr;
-        } catch(e) {}
-      }
-      if (bestPlp) {
-        bestPlp.forEach(s => addSpec(s.label, s.value));
-        console.log('[NA] plp_specifications:', bestPlp.length, 'entries');
-      }
-
-      // Strategy B: find any specifications/attributes array
-      if (details.specs.length < 3) {
-        for (const key of ['"specifications"', '"attributes"', '"features"']) {
-          const re = new RegExp(key + '\\s*:\\s*(\\[[^\\]]{0,20000}\\])', 'gs');
-          for (const m of text.matchAll(re)) {
-            try {
-              const arr = JSON.parse(m[1]);
-              if (Array.isArray(arr)) arr.forEach(s => addSpec(s.label||s.name||s.key, s.value));
-            } catch(e) {}
-          }
-        }
-      }
-
-      // Strategy C: scan all {label:x, value:y} pairs in entire RSC text
+      for (const s of text.matchAll(new RegExp('\\{code:"[^"]*",name:' + NA_STR + ',value:' + NA_STR, 'g')))
+        addSpec(naUnesc(s[1]), naUnesc(s[2]));
+      // Fallback: old-style quoted {label,value} pairs, in case noon ever reverts
       if (details.specs.length < 3) {
         for (const [,l,v] of text.matchAll(/\{"label":"([^"]{1,60})","value":"([^"]{1,200})"\}/g)) addSpec(l,v);
-        for (const [,v,l] of text.matchAll(/\{"value":"([^"]{1,200})","label":"([^"]{1,60})"\}/g)) addSpec(l,v);
-        for (const [,l,v] of text.matchAll(/\{"name":"([^"]{1,60})","value":"([^"]{1,200})"\}/g)) addSpec(l,v);
       }
-
       console.log('[NA] total specs found:', details.specs.length);
 
-      // ── 2. NOON AI REVIEW SUMMARY ──
-      // noon embeds "summary_points" in their RSC for the reviews section
-      for (const re of [
-        /"summary_points"\s*:\s*(\[[^\]]{10,5000}\])/gs,
-        /"highlights"\s*:\s*(\[[^\]]{10,5000}\])/gs,
-        /"keyPoints"\s*:\s*(\[[^\]]{10,5000}\])/gs,
-      ]) {
-        for (const m of text.matchAll(re)) {
-          try {
-            const pts = JSON.parse(m[1]);
-            if (Array.isArray(pts) && pts.length > 0) {
-              const mapped = pts.map(p => typeof p === 'string' ? p : (p.text||p.point||p.summary||'')).filter(s=>s.length>10);
-              if (mapped.length > 0 && (!details.noonSummary || mapped.length > details.noonSummary.length)) {
-                details.noonSummary = mapped;
-              }
-            }
-          } catch(e) {}
-        }
+      // ── 2. INDIVIDUAL REVIEWS — from JSON-LD: "reviewBody":"...","reviewRating":{"ratingValue":N} ──
+      for (const r of text.matchAll(new RegExp('"reviewBody":' + NA_STR + ',"reviewRating":\\{"@type":"Rating","ratingValue":([\\d.]+)', 'g'))) {
+        const body = naUnesc(r[1]).trim();
+        if (body.length > 5 && details.reviews.length < 25) details.reviews.push({ body, rating: parseFloat(r[2]) });
       }
 
-      // ── 3. INDIVIDUAL REVIEWS with ratings ──
-      // Noon review objects: {"id":...,"body":"...","overall_rating":4,...}
-      const reviewRe = /\{"[^{}]{0,200}"overall_rating"\s*:\s*([\d.]+)[^{}]{0,500}"body"\s*:\s*"([^"]{15,600})"[^{}]{0,200}\}|\{"[^{}]{0,200}"body"\s*:\s*"([^"]{15,600})"[^{}]{0,500}"overall_rating"\s*:\s*([\d.]+)[^{}]{0,200}\}/g;
-      for (const m of text.matchAll(reviewRe)) {
-        const rating = parseFloat(m[1]||m[4]);
-        const body = (m[2]||m[3]||'').replace(/\\n/g,' ').replace(/\\"/g,'"').replace(/\\u[\da-f]{4}/gi, c => String.fromCharCode(parseInt(c.slice(2),16))).trim();
-        if (body.length > 15 && details.reviews.length < 25) details.reviews.push({ body, rating });
-      }
-      // Fallback body-only scan
-      if (details.reviews.length === 0) {
-        for (const [,body] of text.matchAll(/"body"\s*:\s*"([^"]{15,500})"/g)) {
-          details.reviews.push({ body: body.replace(/\\n/g,' ').trim(), rating: null });
-          if (details.reviews.length >= 20) break;
-        }
+      // ── 3. REVIEW COUNT + AVG RATING — JSON-LD AggregateRating, else product_rating literal ──
+      const agg = text.match(/"ratingValue":([\d.]+),"reviewCount":(\d+)/);
+      if (agg) { details.avgRating = parseFloat(agg[1]); details.reviewCount = parseInt(agg[2],10); }
+      else {
+        const pr = text.match(/product_rating:\$R\[\d+\]=\{[^}]*?count:(\d+),value:([\d.]+)/);
+        if (pr) { details.reviewCount = parseInt(pr[1],10); details.avgRating = parseFloat(pr[2]); }
       }
 
-      // ── 4. REVIEW COUNT + AVG RATING ──
-      const cntM = text.match(/"review_count"\s*:\s*(\d+)|"total_reviews"\s*:\s*(\d+)|"count"\s*:\s*(\d+)/);
-      if (cntM) details.reviewCount = parseInt(cntM[1]||cntM[2]||cntM[3]||0);
-      const ratM = text.match(/"average_rating"\s*:\s*([\d.]+)/);
-      if (ratM) details.avgRating = parseFloat(ratM[1]);
-
-      // ── 5. DESCRIPTION ──
-      const descM = text.match(/"description"\s*:\s*"([^"]{30,3000})"/);
-      if (descM) details.description = descM[1].replace(/\\n/g,' ').replace(/\\t/g,' ').replace(/\\"/g,'"').replace(/\\u[\da-f]{4}/gi, c => String.fromCharCode(parseInt(c.slice(2),16))).trim().slice(0,1200);
-
+      // ── 4. DESCRIPTION — take it from the Product JSON-LD block; a bare "description"
+      // match would grab noon's site-wide blurb instead of the product's
+      const descM = text.match(new RegExp('"@type":"Product"[\\s\\S]{0,5000}?"description":' + NA_STR));
+      if (descM) details.description = naUnesc(descM[1]).trim().slice(0,1200);
       console.log('[NA] PDP parsed:', details.specs.length, 'specs |', details.reviews.length, 'reviews | noonSummary:', details.noonSummary?.length||0, 'pts | reviewCount:', details.reviewCount);
       return details;
     } catch(e) {
@@ -1376,71 +1314,89 @@ RULES: image_url = https://f.nooncdn.com/p/ + image_key + .jpg. url = https://ww
   }
 
 
+  // Noon's 2026 frontend ("bigalog", data-version 4.x) serializes page data as JS
+  // object literals with UNQUOTED keys: $R[2028]={offer_code:"...",price:117,...}
+  // JSON.parse can never work on this — extract fields per product with regexes instead.
+  const NA_STR = '"((?:[^"\\\\]|\\\\.)*)"'; // JS string literal, handles \" escapes
+  function naUnesc(s){
+    return s==null ? s : s
+      .replace(/\\u([0-9a-fA-F]{4})/g,(_,h)=>String.fromCharCode(parseInt(h,16)))
+      .replace(/\\(.)/g,'$1');
+  }
+
   function parseNoonRSC(text, requiredDealSlug=null, requiredDealText=null) {
     if (!text || text.length < 100) return [];
-    // 🔍 DIAGNOSTIC: what deal_tag values exist in this RSC payload?
-    const allDealTags = [...text.matchAll(/"deal_tag"\s*:\s*\{[^}]*"text"\s*:\s*"([^"]+)"/g)].map(m=>m[1]);
-    const flatDealTags = [...text.matchAll(/"deal_tag"\s*:\s*"([^"]+)"/g)].map(m=>m[1]);
     console.log('[NA RSC] requiredDealSlug:', requiredDealSlug, '| requiredDealText:', requiredDealText);
-    console.log('[NA RSC] deal_tag values in payload:', [...new Set([...allDealTags,...flatDealTags])].slice(0,10));
     const products = [], seen = new Set();
-    const pat = /\{"offer_code":"[^"]+","catalog_sku":/g;
+    const pat = /offer_code:"[a-z0-9]+",catalog_sku:"/g;
     let m;
     while ((m = pat.exec(text)) !== null && products.length < 8) {
-      const pos = m.index;
-      let depth=0, end=-1;
-      for (let i=pos; i<Math.min(pos+50000,text.length); i++) {
-        if(text[i]==='{') depth++;
-        else if(text[i]==='}') { depth--; if(depth===0){end=i+1;break;} }
+      // Each product's fields sit between this offer_code and the next one
+      const nextIdx = text.indexOf('offer_code:"', m.index + 1);
+      const chunk = text.slice(m.index, Math.min(nextIdx === -1 ? text.length : nextIdx, m.index + 8000));
+      const grab = re => { const r = chunk.match(re); return r ? r[1] : null; };
+
+      const catalog_sku = grab(/catalog_sku:"([^"]+)"/);
+      const name = naUnesc(grab(new RegExp('name:' + NA_STR)));
+      if (!catalog_sku || !name || seen.has(catalog_sku)) continue;
+
+      const priceStr = grab(/[,{]price:([\d.]+)/);
+      const salePriceStr = grab(/[,{]sale_price:([\d.]+)/);
+      const price = priceStr ? parseFloat(priceStr) : null;
+      const sale_price = salePriceStr ? parseFloat(salePriceStr) : null;
+      const slug = grab(new RegExp('[,{]url:' + NA_STR));
+      const image_key = grab(/image_key:"([^"]+)"/);
+      const brand = naUnesc(grab(new RegExp('brand:' + NA_STR)));
+
+      let product_rating = null;
+      const prM = chunk.match(/product_rating:\$R\[\d+\]=\{([^}]*)\}/);
+      if (prM) {
+        const v = prM[1].match(/value:([\d.]+)/), c = prM[1].match(/count:(\d+)/);
+        if (v) product_rating = { value: parseFloat(v[1]), count: c ? parseInt(c[1],10) : 0 };
       }
-      if(end===-1) continue;
-      try {
-        const p = JSON.parse(text.slice(pos,end));
-        if(p.catalog_sku && p.name && !seen.has(p.catalog_sku)) {
-          // If a deal filter is active, only keep products carrying that deal tag
-          if (requiredDealSlug) {
-            // Noon's URL filter (f[deal_tag][]=slug) already filters server-side.
-            // Only do client-side rejection if the product explicitly has a DIFFERENT deal tag.
-            // Don't reject products with no deal_tag field — they may still be deal products.
-            const rawTag = p.deal_tag?.text || p.deal_tag || '';
-            if (rawTag) {
-              const normTag = rawTag.replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27FF}\u{200D}\uFE0F]/gu,'').trim().toLowerCase();
-              const keyword = requiredDealSlug.split('-')[0]; // "ramadan", "mega", "flash"
-              // Only skip if it explicitly has a DIFFERENT deal (e.g. "mega deal" when we want "ramadan")
-              if (!normTag.includes(keyword) && keyword !== 'flash') {
-                // Be lenient — keyword 'ramadan' should match 'ramadan ready', 'ramadan deal', etc.
-                const slugKeywords = requiredDealSlug.split('-').filter(w=>w.length>3); // ['ramadan','ready']
-                const anyMatch = slugKeywords.some(kw => normTag.includes(kw));
-                if (!anyMatch) { continue; }
-              }
-            }
-            // No deal_tag on product? Trust noon's server-side filter — keep it.
-          }
-          seen.add(p.catalog_sku);
-          // Sanitize specs
-          let specs = p.plp_specifications;
-          if(!specs||typeof specs!=='object') specs=[];
-          else if(!Array.isArray(specs)) specs=Object.entries(specs).map(([label,value])=>({label,value}));
-          specs = specs.filter(s=>s&&s.label&&s.value);
-          // Build URL — noon format is: /slug/SKU/p/
-          const sku = (p.catalog_sku||'').replace(/-\d+$/,'');
-          let productUrl = '';
-          if (p.url && sku) {
-            // Combine slug + SKU: /sunscreen-hydro-.../ZE433CD9EA9EB12745D69Z/p/
-            const slug = p.url.replace(/\/+$/,'');
-            productUrl = `https://www.noon.com/uae-en/${slug}/${sku}/p/`;
-          } else if (sku) {
-            productUrl = `https://www.noon.com/uae-en/-/${sku}/p/`;
-          }
-          if (products.length === 0) console.log('[NA] URL built:', productUrl);
-          products.push({
-            ...p,
-            plp_specifications: specs,
-            _imageUrl: p.image_key ? `https://f.nooncdn.com/p/${p.image_key}.jpg` : '',
-            _url: productUrl,
-          });
+
+      let deal_tag = null;
+      const dtM = chunk.match(/deal_tag:\$R\[\d+\]=\{[^}]*?text:"([^"]+)"/);
+      if (dtM) deal_tag = { text: naUnesc(dtM[1]) };
+
+      // plp_specifications is now a plain map with QUOTED keys: {"Connection Type":"Bluetooth"}
+      const specs = [];
+      const spM = chunk.match(/plp_specifications:\$R\[\d+\]=\{([^}]*)\}/);
+      if (spM) for (const s of spM[1].matchAll(/"((?:[^"\\]|\\.)*)":"((?:[^"\\]|\\.)*)"/g))
+        specs.push({ label: naUnesc(s[1]), value: naUnesc(s[2]) });
+
+      // Deal filter: only reject products explicitly tagged with a DIFFERENT deal.
+      // No deal_tag on product? Trust noon's server-side filter — keep it.
+      if (requiredDealSlug && deal_tag) {
+        const normTag = deal_tag.text.replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27FF}\u{200D}️]/gu,'').trim().toLowerCase();
+        const keyword = requiredDealSlug.split('-')[0]; // "ramadan", "mega", "flash"
+        if (!normTag.includes(keyword) && keyword !== 'flash') {
+          const slugKeywords = requiredDealSlug.split('-').filter(w=>w.length>3);
+          const anyMatch = slugKeywords.some(kw => normTag.includes(kw));
+          // Generic "Deal" tag is fine — noon often collapses campaign names to just "Deal"
+          if (!anyMatch && !normTag.includes('deal')) continue;
         }
-      } catch(e) {}
+      }
+
+      seen.add(catalog_sku);
+      // Build URL — noon format is: /slug/SKU/p/
+      const sku = catalog_sku.replace(/-\d+$/,'');
+      let productUrl = '';
+      if (slug && sku) productUrl = `https://www.noon.com/uae-en/${slug.replace(/\/+$/,'')}/${sku}/p/`;
+      else if (sku) productUrl = `https://www.noon.com/uae-en/-/${sku}/p/`;
+      if (products.length === 0) console.log('[NA] URL built:', productUrl);
+
+      products.push({
+        catalog_sku, name, brand, price, sale_price,
+        product_rating,
+        rating_average: product_rating?.value, rating_count: product_rating?.count,
+        deal_tag,
+        plp_specifications: specs,
+        image_key,
+        url: slug || '',
+        _imageUrl: image_key ? `https://f.nooncdn.com/p/${image_key}.jpg` : '',
+        _url: productUrl,
+      });
     }
     console.log('[NA]', products.length > 0 ? `✅ ${products.length} products: ${products[0].name}` : '❌ no products');
     return products;
